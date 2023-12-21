@@ -27,8 +27,7 @@ from dj_rest_auth.registration.views import RegisterView
 from allauth.account.models import EmailConfirmation
 from django.shortcuts import redirect
 import requests
-
-
+from allauth.account.utils import send_email_confirmation
 
 
 
@@ -97,20 +96,12 @@ class OTPLoginView(DjRestAuthLoginView):
 
         print('User authenticated:', self.request.user.is_authenticated)
 
-        
-        
-
+          
         
 
 
 def success_page(request, token):
     return render(request, 'user/success_page.html', {'token': token})
-
-class CustomTokenObtainPairView(TokenObtainPairView):
-    serializer_class = CustomTokenObtainPairSerializer
-
-
-
 
 class CustomUserRegistrationView(RegisterView):
     permission_classes = [AllowAny]
@@ -147,6 +138,49 @@ class CustomUserRegistrationView(RegisterView):
     def perform_create(self, serializer):
         user = serializer.save(self.request)
         return user
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+
+class CustomUserRegistrationView(RegisterView):
+    permission_classes = [AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = self.perform_create(serializer)
+
+        # Your TOTP logic here
+        self.create_totp_device(user)
+        send_email_confirmation(request, user)
+
+        return Response({'detail': 'Registration successful. An email has been sent for verification.'}, status=status.HTTP_201_CREATED)
+
+    def create_totp_device(self, user):
+        # Generate and store TOTP secret for the user
+        totp_device = TOTPDevice.objects.create(user=user, confirmed=True)
+        totp_device.save()
+
+        # Build the URL for TOTP registration
+        totp_registration_url = reverse('totp-registration', kwargs={'device_id': totp_device.id})
+        registration_url = self.request.build_absolute_uri(totp_registration_url)
+        print(registration_url)
+
+        # Send registration email
+        subject = 'Welcome to My Website'
+        message = f'Thank you for registering! Click the following link to complete TOTP registration: <a href="{registration_url}" style="color: blue;">{registration_url}</a>'
+        from_email = 'amaldq333@gmail.com'
+        recipient_list = [user.email]
+        send_mail(subject, message, from_email, recipient_list, html_message=message)
+
+    def perform_create(self, serializer):
+        user = serializer.save(self.request)
+        return user
+
+
+
 
 
 class TOTPRegistrationView(APIView):

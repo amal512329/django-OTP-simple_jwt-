@@ -16,6 +16,7 @@ from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+TEMPLATES_DIR = os.path.join(BASE_DIR ,"templates")
 
 
 # Quick-start development settings - unsuitable for production
@@ -61,7 +62,10 @@ INSTALLED_APPS = [
     'dj_rest_auth.registration',
     
 ]
+
+
 SITE_ID = 2
+
 
 
 
@@ -83,7 +87,7 @@ ROOT_URLCONF = 'core_project.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR, 'user/templates')],
+        'DIRS': [TEMPLATES_DIR],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -100,7 +104,7 @@ WSGI_APPLICATION = 'core_project.wsgi.application'
 
 
 
-ACCOUNT_EMAIL_VERIFICATION = 'none'
+
 
 REST_USE_JWT = True
 
@@ -116,6 +120,8 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.BasicAuthentication',
+        
+
         
 
         # Add other authentication classes if needed
@@ -219,3 +225,29 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = 'smtp.gmail.com'  # Replace with your actual SMTP hostname
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'amaldq333@gmail.com' 
+EMAIL_HOST_PASSWORD = 'cyqm wupy mtuh ajnk'    
+DEFAULT_FROM_EMAIL = 'amaldq333@gmail.com'
+
+ 
+# Replace with your default "from" address
+# List of admins who get error notifications
+ # Prefix for email subjects
+SERVER_EMAIL = 'amaldq333@gmail.com'  # Email address that error messages come from
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+
+AUTHENTICATION_CLASSES = (
+    'allauth.account.auth_backends.AuthenticationBackend',
+    # ...
+)
+
+
+

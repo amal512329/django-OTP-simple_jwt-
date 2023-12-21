@@ -12,7 +12,26 @@ from django_otp.plugins.otp_totp.models import TOTPDevice
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.response import Response
 from rest_framework import status
-from .serializers import CustomTokenObtainPairSerializer
+from .serializers import CustomTokenObtainPairSerializer,UserRegistrationSerializer
+from django.core.mail import send_mail
+from rest_framework.views import APIView
+from rest_framework import generics
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
+from django.shortcuts import get_object_or_404
+from django.urls import reverse
+import qrcode
+from io import BytesIO
+from dj_rest_auth.registration.views import RegisterView
+
+from allauth.account.models import EmailConfirmation
+from django.shortcuts import redirect
+import requests
+
+
+
+
+
 
 class OTPLoginView(DjRestAuthLoginView):
     
@@ -89,3 +108,87 @@ def success_page(request, token):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+
+
+
+class CustomUserRegistrationView(RegisterView):
+    permission_classes = [AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = self.perform_create(serializer)
+
+        # Your TOTP logic here
+        self.create_totp_device(user)
+
+        return Response({'detail': 'Registration successful. An email has been sent for verification.'}, status=status.HTTP_201_CREATED)
+
+    def create_totp_device(self, user):
+        # Generate and store TOTP secret for the user
+        totp_device = TOTPDevice.objects.create(user=user, confirmed=True)
+        totp_device.save()
+
+        email_confirmation_url = self.request.build_absolute_uri(email_confirmation_url)
+
+        # Build the URL for TOTP registration
+        totp_registration_url = reverse('totp-registration', kwargs={'device_id': totp_device.id})
+        registration_url = self.request.build_absolute_uri(totp_registration_url)
+        print(registration_url)
+
+        # Send registration email
+        subject = 'Welcome to My Website'
+        message = f'Thank you for registering! Click the following link to complete TOTP registration: <a href="{registration_url}" style="color: blue;">{registration_url}</a>'
+        from_email = 'amaldq333@gmail.com'
+        recipient_list = [user.email]
+        send_mail(subject, message, from_email, recipient_list, html_message=message)
+
+    def perform_create(self, serializer):
+        user = serializer.save(self.request)
+        return user
+
+
+class TOTPRegistrationView(APIView):
+    def get(self, request, device_id, *args, **kwargs):
+        totp_device = get_object_or_404(TOTPDevice, id=device_id)
+        totp_device.confirmed = True
+        totp_device.save()
+
+        # Generate QR code
+        totp_url = totp_device.config_url
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(totp_url)
+        qr.make(fit=True)
+
+        print("QR code generated")
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = BytesIO()
+        img.save(buffer)
+        qr_code_image = buffer.getvalue()
+
+        response = HttpResponse(qr_code_image, content_type="image/png")
+        response['Content-Disposition'] = 'attachment; filename="qrcode.png"'
+        return response
+    
+
+
+class CustomEmailConfirmView(APIView):
+    def get(self, request, key):
+        verify_email_url = 'http://localhost:8000/dj-rest-auth/registration/verify-email/'
+
+        # Make a POST request to the verify-email endpoint with the key
+        response = requests.post(verify_email_url, {'key': key})
+
+        if response.status_code == 200:
+            # Redirect to the login URL
+            login_url = reverse('token_obtain_pair')  # assuming 'token_obtain_pair' is the name of the login endpoint
+            return redirect(login_url)
+        else:
+            return Response({'message': 'Email verification failed'}, status=status.HTTP_400_BAD_REQUEST)

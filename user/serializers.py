@@ -2,12 +2,14 @@ from rest_framework import serializers
 from dj_rest_auth.serializers import LoginSerializer
 from django.contrib.auth import authenticate
 from django_otp.plugins.otp_totp.models import TOTPDevice
+from django.contrib.auth import get_user_model
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import login
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.http import HttpResponseRedirect
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
 
 
 
@@ -78,26 +80,31 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     otp_code = serializers.CharField(write_only=True, required=False)
 
     def validate(self, attrs):
-        data = super().validate(attrs)
-
-        user = self.user
-
         otp_code = attrs.get('otp_code', None)
 
-        # Check if the user has an active TOTP device
-        totp_device = TOTPDevice.objects.filter(user=user, confirmed=True).first()
+        # Call the base class's validate method to get the token data
+        data = super().validate(attrs)
 
-        if totp_device and otp_code:
-            if totp_device.verify_token(otp_code):
+        # If there's an OTP code, validate it
+        if otp_code:
+            user = self.user
+
+            # Check if the user has an active TOTP device
+            totp_device = TOTPDevice.objects.filter(user=user, confirmed=True).first()
+
+            if totp_device and totp_device.verify_token(otp_code):
+                # Valid OTP code, return the token data
                 return data
             else:
                 raise serializers.ValidationError({'otp_code': 'Invalid OTP code'})
-        elif totp_device and not otp_code:
-            raise serializers.ValidationError({'otp_code': 'This field is required when using TOTP'})
         else:
-            return data
-        
+            # No OTP code provided, raise an error
+            raise serializers.ValidationError({'otp_code': 'This field is required when using TOTP'})
 
-        
-            
-       
+
+
+class UserRegistrationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = get_user_model()
+        fields = ('username', 'email', 'password')
+        extra_kwargs = {'password': {'write_only': True}, 'email': {'required': True}}

@@ -24,13 +24,18 @@ from django.contrib.auth.models import User
 from django_otp.admin import OTPAdminSite
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from django_otp.plugins.otp_totp.admin import TOTPDeviceAdmin
+from allauth.account.views import ConfirmEmailView
 from django.urls import path
 from user.views import OTPLoginView
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
-from user.views import CustomTokenObtainPairView
+from user.views import CustomTokenObtainPairView,CustomUserRegistrationView,TOTPRegistrationView
+from django.urls import path, re_path
+from user.views import CustomEmailConfirmView
+
+
 
 class OTPAdmin(OTPAdminSite):
    pass
@@ -48,9 +53,20 @@ urlpatterns = [
     path('dj-rest-auth/', include('dj_rest_auth.urls')),
     path('', include('dj_rest_auth.urls')),
     path('otp/login/', OTPLoginView.as_view(), name='rest_login'),
-    path('dj-rest-auth/registration/', include('dj_rest_auth.registration.urls')),
+     path("dj-rest-auth/registration/", include("dj_rest_auth.registration.urls")),
+    path("dj-rest-auth/", include("dj_rest_auth.urls")),
+    re_path(
+        r'^account-confirm-email/(?P<key>[-:\w]+)/$',
+        CustomEmailConfirmView.as_view(),
+        name='account_confirm_email',
+    ),
     path('',include('user.urls')),
     path('api/token/',CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('user/register/',CustomUserRegistrationView.as_view(), name='api-register'),
+    path('api/totp/register/<int:device_id>/', TOTPRegistrationView.as_view(), name='totp-registration'),
+    
+    
+
   
 ]

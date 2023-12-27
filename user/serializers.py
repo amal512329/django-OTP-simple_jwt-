@@ -9,7 +9,9 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.http import HttpResponseRedirect
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
+from django.contrib.auth.signals import user_logged_in
+from django.contrib.auth.decorators import login_required
+from django.dispatch import receiver
 
 
 
@@ -19,7 +21,7 @@ class SuccessSerializer(serializers.Serializer):
 
 class OTPLoginSerializer(LoginSerializer):
 
-    otp_code = serializers.CharField(required=True)
+    OTP = serializers.CharField(required=True)
 
     def validate_otp_code(self, value):
         # Your validation logic for the OTP code
@@ -108,3 +110,24 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         model = get_user_model()
         fields = ('username', 'email', 'password')
         extra_kwargs = {'password': {'write_only': True}, 'email': {'required': True}}
+
+
+
+
+#signals
+        
+from django.views import View
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
+
+@method_decorator(login_required, name='dispatch')
+class FinishAndRedirectView(View):
+    def get(self, request, *args, **kwargs):
+        # Check if the user has an unconfirmed TOTP device
+        totp_device = TOTPDevice.objects.filter(user=request.user, confirmed=False).first()
+        if totp_device:
+            # Confirm the TOTP device
+            totp_device.confirmed = True
+            totp_device.save()
+        # Redirect to the API token endpoint
+        return redirect('token_obtain_pair')

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QR Code Page</title>
+    
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f4;
+        }
+
+        .qrcode-container {
+            text-align: center;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+            margin-top: 0; /* Remove default margin */
+        }
+
+        img {
+            max-width: 100%;
+            height: auto;
+            margin-top: 10px;
+        }
+
+        .user-info {
+            text-align: left;
+            margin-top: 20px;
+        }
+
+        p {
+            margin: 5px 0;
+        }
+
+        /* Style for user ID and Username on the right */
+        .user-id, .username {
+            clear: left;
+        }
+
+        .user-id::before {
+            content: "User ID: ";
+        }
+
+        .username::before {
+            content: "Username: ";
+        }
+
+        .finish-link {
+            margin-top: 20px;
+            display: block;
+            color: #007bff; /* Bootstrap's primary blue color */
+            text-decoration: none;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="qrcode-container">
+        <h1>QR CODE PAGE</h1>
+        <div class="user-info">
+            <p class="user-id">{{ user_id }}</p>
+            <p class="username">{{ username }}</p>
+            <!-- Add any additional user information here -->
+        </div>
+        <img src="{{ qr_code_data }}" alt="QR Code">
+
+        <a class="finish-link" href="{% url 'finish_and_redirect' user_id=user_id username=username %}">Finish</a>
+    </div>
+</body>
+</html>

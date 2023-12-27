@@ -12,7 +12,7 @@ from django_otp.plugins.otp_totp.models import TOTPDevice
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.response import Response
 from rest_framework import status
-from .serializers import CustomTokenObtainPairSerializer,UserRegistrationSerializer
+from .serializers import CustomTokenObtainPairSerializer
 from django.core.mail import send_mail
 from rest_framework.views import APIView
 from rest_framework import generics
@@ -23,11 +23,16 @@ from django.urls import reverse
 import qrcode
 from io import BytesIO
 from dj_rest_auth.registration.views import RegisterView
-
-from allauth.account.models import EmailConfirmation
 from django.shortcuts import redirect
 import requests
 from allauth.account.utils import send_email_confirmation
+from allauth.account.models import EmailAddress
+from dj_rest_auth.views import LoginView
+from PIL import Image
+import base64
+from dj_rest_auth.views import LoginView as RestAuthLoginView
+from base64 import b64encode
+
 
 
 
@@ -103,6 +108,7 @@ class OTPLoginView(DjRestAuthLoginView):
 def success_page(request, token):
     return render(request, 'user/success_page.html', {'token': token})
 
+
 class CustomUserRegistrationView(RegisterView):
     permission_classes = [AllowAny]
 
@@ -111,29 +117,25 @@ class CustomUserRegistrationView(RegisterView):
         serializer.is_valid(raise_exception=True)
         user = self.perform_create(serializer)
 
-        # Your TOTP logic here
-        self.create_totp_device(user)
+        # No need to call create_totp_device here
+        # The signal will automatically add the user to the TOTP device
+
+        # Check if EmailAddress already exists
+        email_address, created = EmailAddress.objects.get_or_create(
+            user=user,
+            email=user.email,
+            defaults={'primary': False}
+        )
+
+        if not created:
+            # If the EmailAddress already exists, update the primary field
+            email_address.primary = False
+            email_address.save()
+
+        # Send email confirmation
+        send_email_confirmation(request, user)
 
         return Response({'detail': 'Registration successful. An email has been sent for verification.'}, status=status.HTTP_201_CREATED)
-
-    def create_totp_device(self, user):
-        # Generate and store TOTP secret for the user
-        totp_device = TOTPDevice.objects.create(user=user, confirmed=True)
-        totp_device.save()
-
-        email_confirmation_url = self.request.build_absolute_uri(email_confirmation_url)
-
-        # Build the URL for TOTP registration
-        totp_registration_url = reverse('totp-registration', kwargs={'device_id': totp_device.id})
-        registration_url = self.request.build_absolute_uri(totp_registration_url)
-        print(registration_url)
-
-        # Send registration email
-        subject = 'Welcome to My Website'
-        message = f'Thank you for registering! Click the following link to complete TOTP registration: <a href="{registration_url}" style="color: blue;">{registration_url}</a>'
-        from_email = 'amaldq333@gmail.com'
-        recipient_list = [user.email]
-        send_mail(subject, message, from_email, recipient_list, html_message=message)
 
     def perform_create(self, serializer):
         user = serializer.save(self.request)
@@ -144,46 +146,14 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
 
-class CustomUserRegistrationView(RegisterView):
-    permission_classes = [AllowAny]
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = self.perform_create(serializer)
-
-        # Your TOTP logic here
-        self.create_totp_device(user)
-        send_email_confirmation(request, user)
-
-        return Response({'detail': 'Registration successful. An email has been sent for verification.'}, status=status.HTTP_201_CREATED)
-
-    def create_totp_device(self, user):
-        # Generate and store TOTP secret for the user
-        totp_device = TOTPDevice.objects.create(user=user, confirmed=True)
-        totp_device.save()
-
-        # Build the URL for TOTP registration
-        totp_registration_url = reverse('totp-registration', kwargs={'device_id': totp_device.id})
-        registration_url = self.request.build_absolute_uri(totp_registration_url)
-        print(registration_url)
-
-        # Send registration email
-        subject = 'Welcome to My Website'
-        message = f'Thank you for registering! Click the following link to complete TOTP registration: <a href="{registration_url}" style="color: blue;">{registration_url}</a>'
-        from_email = 'amaldq333@gmail.com'
-        recipient_list = [user.email]
-        send_mail(subject, message, from_email, recipient_list, html_message=message)
-
-    def perform_create(self, serializer):
-        user = serializer.save(self.request)
-        return user
 
 
 
 
 
 class TOTPRegistrationView(APIView):
+
+
     def get(self, request, device_id, *args, **kwargs):
         totp_device = get_object_or_404(TOTPDevice, id=device_id)
         totp_device.confirmed = True
@@ -212,8 +182,70 @@ class TOTPRegistrationView(APIView):
         return response
     
 
+class CustomLoginView(RestAuthLoginView):
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data['user']
+        
+        # Generate or retrieve the authentication token
+        token, created = Token.objects.get_or_create(user=user)
+
+        # Get the user's TOTP device
+        totp_device = TOTPDevice.objects.filter(user=user).first()
+
+        if totp_device:
+            # Generate QR code
+            qr_code_img = qrcode.make(totp_device.config_url)
+            buffer = BytesIO()
+            qr_code_img.save(buffer)
+            buffer.seek(0)
+            encoded_img = b64encode(buffer.read()).decode()
+            qr_code_data = f'data:image/png;base64,{encoded_img}'
+
+            
+                # Redirect to a page displaying the QR code
+            return render(request, 'qrcode.html', {'qr_code_data': qr_code_data,'username': user.username, 'user_id': user.id})
+        else:
+            return Response({'message': 'User has no TOTP device'}, status=status.HTTP_400_BAD_REQUEST)
+
+    def generate_qr_code(self, totp_url):
+        
+        
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(totp_url)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = BytesIO()
+        img.save(buffer)
+        # qr_code_image = base64.b64encode(buffer.getvalue()).decode()
+
+
+
+        encoded_img = b64encode(buffer.read()).decode()
+        qr_code_data = f'data:image/png;base64,{encoded_img}'
+
+        print("QR CODE is printing")
+
+        print(qr_code_data)
+
+        return qr_code_data
+        
+    
+    
+
+
+
+
 
 class CustomEmailConfirmView(APIView):
+
     def get(self, request, key):
         verify_email_url = 'http://localhost:8000/dj-rest-auth/registration/verify-email/'
 
@@ -222,7 +254,67 @@ class CustomEmailConfirmView(APIView):
 
         if response.status_code == 200:
             # Redirect to the login URL
-            login_url = reverse('token_obtain_pair')  # assuming 'token_obtain_pair' is the name of the login endpoint
-            return redirect(login_url)
+            redirect_url = reverse('custom-login')  # Assuming 'custom-login' is the name of your custom login URL
+            return HttpResponseRedirect(redirect_url)
         else:
             return Response({'message': 'Email verification failed'}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+
+def qrcode_page(request):
+    key = request.GET.get('key', '')
+    user_id = request.GET.get('user_id', '')
+    username = request.GET.get('username', '')
+    qr_code_image = request.GET.get('qr_code_data', '')
+   
+
+    return render(request, 'qrcode.html', {
+        'key': key,
+        'user_id': user_id,
+        'username': username,
+        'qr_code_image': qr_code_image,
+    })
+
+
+
+from django.views import View
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
+from django.contrib.auth import get_user_model
+from django.http import HttpResponseNotFound
+
+UserModel = get_user_model()
+
+
+
+@method_decorator(login_required, name='dispatch')
+class FinishAndRedirectView(View):
+    def get(self, request, *args, **kwargs):
+        # Get user ID and username from the URL parameters
+        user_id = self.kwargs.get('user_id')
+        username = self.kwargs.get('username')
+
+        print(username)
+
+        # Check if the user exists
+        try:
+            user = UserModel.objects.get(id=user_id, username=username)
+
+            print("THIS IS THE USER :",user)
+        except UserModel.DoesNotExist:
+            return HttpResponseNotFound("User not found")
+
+        # Check if the user has a TOTP device
+        totp_device = TOTPDevice.objects.filter(user=user).first()
+
+        print(totp_device)
+
+        if totp_device:
+            # Confirm the TOTP device
+            totp_device.confirmed = True
+            totp_device.save()
+
+            # Redirect to API token endpoint or any other desired URL
+            return redirect('token_obtain_pair')  # Update with your actual URL pattern name
+        else:
+            return render(request, 'no_totp_device.html')

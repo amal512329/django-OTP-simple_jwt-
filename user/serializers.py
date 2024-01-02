@@ -79,6 +79,8 @@ class OTPLoginSerializer(LoginSerializer):
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+
+ 
     otp_code = serializers.CharField(write_only=True, required=False)
 
     def validate(self, attrs):
@@ -119,9 +121,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 from django.views import View
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
+from rest_framework.permissions import AllowAny
 
-@method_decorator(login_required, name='dispatch')
+
 class FinishAndRedirectView(View):
+
+    permission_classes = [AllowAny]
     def get(self, request, *args, **kwargs):
         # Check if the user has an unconfirmed TOTP device
         totp_device = TOTPDevice.objects.filter(user=request.user, confirmed=False).first()
@@ -130,4 +135,4 @@ class FinishAndRedirectView(View):
             totp_device.confirmed = True
             totp_device.save()
         # Redirect to the API token endpoint
-        return redirect('token_obtain_pair')
+        return redirect('http://127.0.0.1:8000')

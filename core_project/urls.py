@@ -67,7 +67,7 @@ urlpatterns = [
     path('api/v1/',include('user.urls')),
     path('api/totp/register/<int:device_id>/', TOTPRegistrationView.as_view(), name='totp-registration'),
     path('qrcode/', qrcode_page, name='qrcode-page'),
-    path('finish_and_redirect/<int:user_id>/<str:username>/', FinishAndRedirectView.as_view(), name='finish_and_redirect'),
+    path('finish_and_redirect/', FinishAndRedirectView.as_view(), name='finish_and_redirect'),
   
     
     

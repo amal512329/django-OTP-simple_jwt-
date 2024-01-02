@@ -32,6 +32,10 @@ from PIL import Image
 import base64
 from dj_rest_auth.views import LoginView as RestAuthLoginView
 from base64 import b64encode
+from rest_framework_simplejwt.tokens import AccessToken
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import permission_classes
+
 
 
 
@@ -142,10 +146,20 @@ class CustomUserRegistrationView(RegisterView):
         return user
 
 
+
 class CustomTokenObtainPairView(TokenObtainPairView):
+    
     serializer_class = CustomTokenObtainPairSerializer
 
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
 
+        if serializer.is_valid():
+            # If the serializer is valid, return the token data
+            return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        else:
+            # If the serializer is not valid, return the validation errors
+            return Response(serializer.errors, status=status.HTTP_402_PAYMENT_REQUIRED)
 
 
 
@@ -183,10 +197,15 @@ class TOTPRegistrationView(APIView):
     
 
 class CustomLoginView(RestAuthLoginView):
+   
     def post(self, request, *args, **kwargs):
+        print("test 1: ", request.data)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
+
+
+     
         
         # Generate or retrieve the authentication token
         token, created = Token.objects.get_or_create(user=user)
@@ -202,10 +221,17 @@ class CustomLoginView(RestAuthLoginView):
             buffer.seek(0)
             encoded_img = b64encode(buffer.read()).decode()
             qr_code_data = f'data:image/png;base64,{encoded_img}'
+            access_token_data = {
+                "qr": qr_code_data,
+                "username": user.username,
+                'user_id': user.id,
+            }
+            access_token = AccessToken.for_user(user)
+            access_token.payload.update(access_token_data)
 
-            
-                # Redirect to a page displaying the QR code
-            return render(request, 'qrcode.html', {'qr_code_data': qr_code_data,'username': user.username, 'user_id': user.id})
+            # Return the JWT access token
+            return Response({'access_token': str(access_token)}, status=status.HTTP_200_OK)
+            # return render(request, 'qrcode.html', {'qr_code_data': qr_code_data,'username': user.username, 'user_id': user.id})
         else:
             return Response({'message': 'User has no TOTP device'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -246,7 +272,11 @@ class CustomLoginView(RestAuthLoginView):
 
 class CustomEmailConfirmView(APIView):
 
+    
     def get(self, request, key):
+        
+        
+
         verify_email_url = 'http://localhost:8000/dj-rest-auth/registration/verify-email/'
 
         # Make a POST request to the verify-email endpoint with the key
@@ -282,32 +312,31 @@ from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.contrib.auth import get_user_model
 from django.http import HttpResponseNotFound
+from django.views.decorators.csrf import csrf_exempt
 
 UserModel = get_user_model()
 
 
 
-@method_decorator(login_required, name='dispatch')
-class FinishAndRedirectView(View):
-    def get(self, request, *args, **kwargs):
-        # Get user ID and username from the URL parameters
-        user_id = self.kwargs.get('user_id')
-        username = self.kwargs.get('username')
+# @method_decorator(csrf_exempt, name='dispatch')
+# @permission_classes([IsAuthenticated])
+class FinishAndRedirectView(APIView):
+    print("first")
+    permission_classes = [IsAuthenticated]
 
-        print(username)
+    def post(self, request, *args, **kwargs):
+        # Get user ID and username from the POST data
+        # user_id = request.POST.get('user_id')
+        # username = request.POST.get('username')
 
-        # Check if the user exists
-        try:
-            user = UserModel.objects.get(id=user_id, username=username)
-
-            print("THIS IS THE USER :",user)
-        except UserModel.DoesNotExist:
-            return HttpResponseNotFound("User not found")
-
+        # # Check if the user exists
+        # try:
+        #     user = UserModel.objects.get(id=user_id, username=username)
+        # except UserModel.DoesNotExist:
+        #     return HttpResponseNotFound("User not found")
+        print("user: : : ", request.user)
         # Check if the user has a TOTP device
-        totp_device = TOTPDevice.objects.filter(user=user).first()
-
-        print(totp_device)
+        totp_device = TOTPDevice.objects.filter(user=request.user).first()
 
         if totp_device:
             # Confirm the TOTP device
@@ -315,6 +344,9 @@ class FinishAndRedirectView(View):
             totp_device.save()
 
             # Redirect to API token endpoint or any other desired URL
-            return redirect('token_obtain_pair')  # Update with your actual URL pattern name
+            # Update with your actual URL pattern name
+            return Response({'message': 'OTP SUCCESS'}, status=status.HTTP_200_OK)
         else:
             return render(request, 'no_totp_device.html')
+
+    

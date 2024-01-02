@@ -73,7 +73,13 @@
         </div>
         <img src="{{ qr_code_data }}" alt="QR Code">
 
-        <a class="finish-link" href="{% url 'finish_and_redirect' user_id=user_id username=username %}">Finish</a>
+        <form action="{% url 'finish_and_redirect' %}" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="user_id" value="{{ user_id }}">
+            <input type="hidden" name="username" value="{{ username }}">
+            <!-- Other form fields if needed -->
+            <button type="submit">Finish</button>
+        </form>
     </div>
 </body>
 </html>
